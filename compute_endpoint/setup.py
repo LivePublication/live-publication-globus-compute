@@ -44,6 +44,8 @@ REQUIRES = [
     "jsonschema>=4.19.0,<4.20",
     "cachetools>=5.3.1",
     "types-cachetools>=5.3.0.6",
+    # LivePublication specific requirements for building RO-Crates
+    "rocrate"
 ]
 
 TEST_REQUIRES = [

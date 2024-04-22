@@ -18,10 +18,12 @@ from globus_compute_sdk.sdk.utils import get_env_details
 from globus_compute_sdk.serialize import ComputeSerializer
 from parsl.app.python import timeout
 
+# Distributed Step Crate imports
+from .dist_step_crate import generate_step_crate
+
 log = logging.getLogger(__name__)
 
 serializer = ComputeSerializer()
-
 
 def execute_task(
     task_id: uuid.UUID,
@@ -54,9 +56,9 @@ def execute_task(
     env_details = get_env_details()
     try:
         _task, task_buffer = _unpack_messagebody(task_body)
-        log.debug("executing task task_id='%s'", task_id)
+        log.warning("executing task task_id='%s'", task_id)
         result = _call_user_function(task_buffer, result_size_limit=result_size_limit)
-        log.debug("Execution completed without exception")
+        log.warning("Execution completed without exception")
         result_message = dict(task_id=task_id, data=result)
 
     except Exception:
@@ -81,11 +83,13 @@ def execute_task(
 
     result_message["task_statuses"] = [exec_start, exec_end]
 
-    log.debug(
+    log.warning(
         "task %s completed in %d ns",
         task_id,
         (exec_end.timestamp - exec_start.timestamp),
     )
+
+    generate_step_crate(result_message, _task, task_buffer)
 
     return messagepack.pack(Result(**result_message))
 
