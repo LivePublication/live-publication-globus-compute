@@ -20,6 +20,7 @@ from parsl.app.python import timeout
 
 # Distributed Step Crate imports
 from .dist_step_crate import generate_step_crate
+from lp_sdk.retrospective.crate import DistStepCrate
 
 log = logging.getLogger(__name__)
 
@@ -89,7 +90,10 @@ def execute_task(
         (exec_end.timestamp - exec_start.timestamp),
     )
 
-    generate_step_crate(result_message, _task, task_buffer)
+    crate_path = f'{result_message.get("task_id")}.crate'
+    dist_crate = DistStepCrate(crate_path)
+    dist_crate.add_position(result_message.get("task_id"))
+    dist_crate.write()
 
     return messagepack.pack(Result(**result_message))
 

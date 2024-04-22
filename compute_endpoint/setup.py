@@ -45,7 +45,8 @@ REQUIRES = [
     "cachetools>=5.3.1",
     "types-cachetools>=5.3.0.6",
     # LivePublication specific requirements for building RO-Crates
-    "rocrate"
+    "rocrate",
+    "lp-sdk @ git+https://github.com/LivePublication/LP_SDK@main"
 ]
 
 TEST_REQUIRES = [
