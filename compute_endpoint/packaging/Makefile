@@ -1,6 +1,8 @@
 .DEFAULT: help
 
-PYTHON3 := $(shell which /opt/globus-python/bin/python3 python3 | head -1)
+# Work with the (apparently) different setup in OpenSUSE, where `make` doesn't
+# invoke /bin/sh in the same manner as other platforms.
+PYTHON3 := $$($(SHELL) -c "command -v /opt/globus-python/bin/python3")
 
 PY_FULL_VERSION := $$($(PYTHON3) -c "import sys; print('{}.{}.{}'.format(*sys.version_info))")
 PY_MAJOR_VERSION := $(shell echo -n $(PY_FULL_VERSION) | cut -d . -f1 )
@@ -76,10 +78,10 @@ distclean: clean  ##-Run `clean` target, then additionally remove venv-*, *tar.x
 
 _build_needs:
 	@/bin/echo -e "\033[36;1;40mChecking build dependencies before starting build\033[m ...\n"
-	@[ -x "$$(which git)" ] || { echo "'git' not found; missing 'git' package?"; exit 1; }
-	@[ -x "$$(which xz)" ] || { echo "'xz' not found; missing 'xz' package?"; exit 1; }
-	@[ -x "$$(which sed)" ] || { echo "'sed' not found; missing 'sed' package?"; exit 1; }
-	@[ -x "$$(which tar)" ] || { echo "'tar' not found; missing 'tar' package?"; exit 1; }
+	@[ -x "$$(command -v git)" ] || { echo "'git' not found; missing 'git' package?"; exit 1; }
+	@[ -x "$$(command -v xz)" ] || { echo "'xz' not found; missing 'xz' package?"; exit 1; }
+	@[ -x "$$(command -v sed)" ] || { echo "'sed' not found; missing 'sed' package?"; exit 1; }
+	@[ -x "$$(command -v tar)" ] || { echo "'tar' not found; missing 'tar' package?"; exit 1; }
 	@[ -x "$(PYTHON3)" ] || { echo "Python interpreter not found ('$(PYTHON3)'); try 'make show_vars' for insight?"; exit 1; }
 
 .PHONY: $(VENV_PY)
@@ -119,7 +121,7 @@ dist: $(PREREQS_TARBALL_NAME)  ##-Make the dist/ directory with prereqs and whee
 	  && cp $(PREREQS_TARBALL_NAME) $(PKG_WHEEL) dist/
 
 deb_build_needs:  ##-Check that necessary executables are available before starting the DEB build.
-	@[ -x "$$(which dpkg-checkbuilddeps)" ] || { echo "'dpkg-checkbuilddeps' not found; missing 'dpkg-dev' package?"; exit 1; }
+	@[ -x "$$(command -v dpkg-checkbuilddeps)" ] || { echo "'dpkg-checkbuilddeps' not found; missing 'dpkg-dev' package?"; exit 1; }
 	@dpkg-checkbuilddeps
 
 deb: deb_build_needs dist  ##-Build a Debian package of the Globus Compute Endpoint (.deb)
@@ -150,8 +152,7 @@ deb: deb_build_needs dist  ##-Build a Debian package of the Globus Compute Endpo
 	@ls -lh dist/debbuild/*deb
 
 rpm_build_needs:  ##-Check that necessary executables are available before starting the RPM build.
-	@[ -x "$$(which rpmbuild)" ] || { echo "'rpmbuild' not found; missing 'rpmdevtools' package?"; exit 1; }
-
+	@[ -x "$$(command -v rpmbuild)" ] || { echo "'rpmbuild' not found; missing 'rpmdevtools' or 'rpm-build' package(s)?"; exit 1; }
 
 rpm: rpm_build_needs dist  ##-Build an RPM package of the Globus Compute Endpoint (.rpm)
 	(   cd dist/ \
@@ -167,7 +168,7 @@ rpm: rpm_build_needs dist  ##-Build an RPM package of the Globus Compute Endpoin
 	    -e "s/@PACKAGE_WHEEL@/$(PKG_WHEEL)/g" \
 	    -e "s/@PIP_NAME@/$(PIP_NAME_D)/g" \
 	    < ../fedora/$(PKG_NAME).spec.in > ./$(PKG_NAME).spec \
-	 && HOME="$$(pwd)" rpmbuild -ba ./$(PKG_NAME).spec \
+	 && HOME="$$(pwd)" rpmbuild --define "_topdir $$(pwd)/rpmbuild" -ba ./$(PKG_NAME).spec \
 	)
 	@echo -e "\nRPM package successfully built:"
 	@ls -lh dist/rpmbuild/RPMS/**/*rpm
