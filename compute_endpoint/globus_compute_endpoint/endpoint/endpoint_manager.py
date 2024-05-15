@@ -154,8 +154,11 @@ class EndpointManager:
                     name=conf_dir.name,
                     endpoint_id=endpoint_uuid,
                     metadata=EndpointManager.get_metadata(config, conf_dir),
-                    display_name=config.display_name,
                     multi_user=True,
+                    display_name=config.display_name,
+                    allowed_functions=config.allowed_functions,
+                    auth_policy=config.authentication_policy,
+                    subscription_id=config.subscription_id,
                     public=config.public,
                 )
 
@@ -473,8 +476,8 @@ class EndpointManager:
                     os.setresuid(proc_uid, proc_uid, -1)
                     os.setresgid(proc_gid, proc_gid, -1)
 
-            deadline = time.time() + 10
-            while self._children and time.time() < deadline:
+            deadline = time.monotonic() + 10
+            while self._children and time.monotonic() < deadline:
                 time.sleep(0.5)
                 self.wait_for_children()
 

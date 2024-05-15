@@ -8,6 +8,97 @@ contact the Globus Compute Team via Slack.
    All configuration examples below must be customized for the user's
    allocation, Python environment, file system, etc.
 
+GlobusComputeEngine
+^^^^^^^^^^^^^^^^^^^
+
+|GlobusComputeEngine|_ is the execution backend that Globus Compute uses
+to execute functions. To execute functions at scale, Globus Compute can be
+configured to use a range of |Providers|_ which allows it to connect to Batch schedulers
+like Slurm and PBSTorque to provision compute nodes dynamically in response to workload.
+These capabilities are largely borrowed from Parsl's |HighThroughputExecutor|_ and therefore
+all of |HighThroughputExecutor|_'s parameter options are supported as passthrough.
+
+Note::
+As of ``globus-compute-endpoint==2.12.0`` |GlobusComputeEngine|_, replaces the
+``HighThroughputEngine`` as the default executor.
+
+Here are |GlobusComputeEngine|_ specific features:
+
+Retries
++++++++
+
+Functions submitted to the |GlobusComputeEngine|_ can fail due to infrastructure
+failures, for example, the worker executing the task might terminate due to it running
+out of memory, or all workers under a batch job could fail due to the batch job
+exiting as it reaches the walltime limit. |GlobusComputeEngine|_ can be configured
+to automatically retry these tasks by setting ``max_retries_on_system_failure=N``
+where N is the number of retries allowed. The endpoint config sets default retries
+to 0 since functions can be computationally expensive, not idempotent, or leave
+side effects that affect subsequent retries.
+
+Example config snippet:
+
+.. code-block:: yaml
+
+    amqp_port: 443
+    display_name: Retry_2_times
+    engine:
+        type: GlobusComputeEngine
+        max_retries_on_system_failure: 2  # Default=0
+
+
+
+Auto-Scaling
+++++++++++++
+
+|GlobusComputeEngine|_ by default automatically scales workers in response to workload.
+
+``Strategy`` configuration is limited to two options:
+1. ``max_idletime``: Maximum duration in seconds that workers are allowed to idle before they are marked for termination
+2. ``strategy_period``: Set the # of seconds between strategy attempting auto-scaling events
+
+The bounds for scaling are determined by the options to the ``Provider``
+(``init_blocks``, ``min_blocks``, ``max_blocks``). Please refer to the `https://parsl.readthedocs.io/en/stable/userguide/execution.html#elasticity <Parsl docs>`_
+for more info.
+
+Here's an example configuration:
+
+.. code-block:: yaml
+
+    engine:
+        type: GlobusComputeEngine
+        job_status_kwargs:
+            max_idletime: 60.0      # Default = 120s
+            strategy_period: 120.0  # Default = 5s
+
+
+Container support
++++++++++++++++++
+
+
+Containers are a useful tool to deploy packaged environments to launch functions in.
+|GlobusComputeEngine|_ supports containers by launching workers in user-defined
+containers. Please note that a single endpoint can only support one container type/image.
+|GlobusComputeEngine|_ can launch workers in containerized environments, with
+support for Docker, Singularity, and Apptainer.
+Use by setting ``container_type``, ``container_uri``, and  additional options
+may be specified via ``container_cmd_options``. Valid options for ``container_type`` are
+(``docker``, ``singularity``, ``apptainer``, and ``custom``).
+
+The sample configuration below will launch the manager and all the workers on a single node
+in a Docker container from the image: `funcx/kube-endpoint:main-3.10` with a custom option to
+volume mount `/tmp:/tmp`:
+
+.. code-block:: yaml
+
+  display_name: Docker
+  engine:
+      type: GlobusComputeEngine
+      container_type: docker
+      container_uri: funcx/kube-endpoint:main-3.10
+      container_cmd_options: -v /tmp:/tmp
+
+
 Anvil (RCAC, Purdue)
 ^^^^^^^^^^^^^^^^^^^^
 
@@ -18,18 +109,6 @@ The following snippet shows an example configuration for executing remotely on A
 .. literalinclude:: configs/anvil.yaml
    :language: yaml
 
-
-Blue Waters (NCSA)
-^^^^^^^^^^^^^^^^^^
-
-.. image:: _static/images/blue-waters-supercomputer.jpg
-
-The following snippet shows an example configuration for executing remotely on Blue Waters, a supercomputer at the National Center for Supercomputing Applications.
-The configuration assumes the user is running on a login node, uses the ``TorqueProvider`` to interface
-with the scheduler, and uses the ``AprunLauncher`` to launch workers.
-
-.. literalinclude:: configs/bluewaters.yaml
-   :language: yaml
 
 Delta (NCSA)
 ^^^^^^^^^^^^
@@ -108,37 +187,6 @@ The KubernetesProvider exploits the Python Kubernetes API, which assumes that yo
    :language: yaml
 
 
-Theta (ALCF)
-^^^^^^^^^^^^
-
-.. image:: _static/images/ALCF-Theta_111016-1000px.jpg
-
-The following snippet shows an example configuration for executing on Argonne Leadership Computing Facility's
-**Theta** supercomputer. This example uses the ``HighThroughputEngine`` and connects to Theta's Cobalt scheduler
-using the ``CobaltProvider``. This configuration assumes that the script is being executed on the login nodes of Theta.
-
-.. literalinclude:: configs/theta.yaml
-   :language: yaml
-
-The following configuration is an example to use singularity container on Theta.
-
-.. literalinclude:: configs/theta_singularity.yaml
-   :language: yaml
-
-
-Cooley (ALCF)
-^^^^^^^^^^^^^
-
-.. image:: _static/images/31174D02-Cooley800.jpg
-
-The following snippet shows an example configuration for executing on Argonne Leadership Computing Facility's
-**Cooley** cluster. This example uses the ``HighThroughputEngine`` and connects to Cooley's Cobalt scheduler
-using the ``CobaltProvider``. This configuration assumes that the script is being executed on the login nodes of Cooley.
-
-.. literalinclude:: configs/cooley.yaml
-   :language: yaml
-
-
 Polaris (ALCF)
 ^^^^^^^^^^^^^^
 
@@ -199,17 +247,6 @@ running on a login node, uses the ``SlurmProvider`` to interface with the schedu
 .. literalinclude:: configs/bridges-2.yaml
    :language: yaml
 
-Stampede2 (TACC)
-^^^^^^^^^^^^^^^^
-
-.. image:: _static/images/stampede2.jpg
-
-The following snippet shows an example configuration for accessing the Stampede2 system at the Texas Advanced Computing Center (TACC).
-The configuration below assumes that the user is running on a login node, uses the ``SlurmProvider`` to interface with the scheduler,
-and uses the ``SrunLauncher`` to launch workers.
-
-.. literalinclude:: configs/stampede2.yaml
-   :language: yaml
 
 FASTER (TAMU)
 ^^^^^^^^^^^^^
@@ -238,3 +275,11 @@ will have the following environment variables set to the worker specific identit
 
 .. |nbsp| unicode:: 0xA0
    :trim:
+
+.. |GlobusComputeEngine| replace:: ``GlobusComputeEngine``
+.. _GCEngine: reference/engine.html
+.. |HighThroughputExecutor| replace:: ``HighThroughputExecutor``
+.. _HighThroughputExecutor: https://parsl.readthedocs.io/en/stable/stubs/parsl.executors.HighThroughputExecutor.html
+
+.. |Providers| replace:: ``Providers``
+.. _Providers: https://parsl.readthedocs.io/en/stable/reference.html#providers
