@@ -120,13 +120,15 @@ def mock_log(mocker):
 
 
 @pytest.mark.parametrize(
-    "tg_id, fn_id, ep_id, uep_config",
+    "tg_id, fn_id, ep_id, res_spec, uep_config",
     (
-        (uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), {"heartbeat": 10}),
-        (str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()), None),
+        (uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), {"num_nodes": 2}, {"heartbeat": 10}),
+        (str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()), None, None),
     ),
 )
-def test_task_submission_info_stringification(tg_id, fn_id, ep_id, uep_config):
+def test_task_submission_info_stringification(
+    tg_id, fn_id, ep_id, res_spec, uep_config
+):
     fut_id = 10
 
     info = _TaskSubmissionInfo(
@@ -134,6 +136,7 @@ def test_task_submission_info_stringification(tg_id, fn_id, ep_id, uep_config):
         task_group_id=tg_id,
         function_id=fn_id,
         endpoint_id=ep_id,
+        resource_specification=res_spec,
         user_endpoint_config=uep_config,
         args=(),
         kwargs={},
@@ -145,8 +148,41 @@ def test_task_submission_info_stringification(tg_id, fn_id, ep_id, uep_config):
     assert f"task_group_uuid='{tg_id}'" in as_str
     assert f"function_uuid='{fn_id}'" in as_str
     assert f"endpoint_uuid='{ep_id}'" in as_str
+    res_spec_len = len(res_spec) if res_spec else 0
+    assert f"resource_specification={{{res_spec_len}}};"
     uep_config_len = len(uep_config) if uep_config else 0
     assert f"user_endpoint_config={{{uep_config_len}}};"
+
+
+@pytest.mark.parametrize(
+    "tg_id, fn_id, ep_id, res_spec, uep_config",
+    (
+        (uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), {"num_nodes": 2}, {"heartbeat": 10}),
+        (uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), {}, {}),
+    ),
+)
+def test_task_submission_snapshots_data(tg_id, fn_id, ep_id, res_spec, uep_config):
+    fut_id = 10
+
+    info = _TaskSubmissionInfo(
+        task_num=fut_id,
+        task_group_id=tg_id,
+        function_id=fn_id,
+        endpoint_id=ep_id,
+        resource_specification=res_spec,
+        user_endpoint_config=uep_config,
+        args=(),
+        kwargs={},
+    )
+    before_changes = str(info)
+
+    res_spec["foo"] = "bar"
+    res_spec["num_nodes"] = 100
+    uep_config["something else"] = "abc"
+    uep_config["heartbeat"] = 12345
+
+    after_changes = str(info)
+    assert before_changes == after_changes
 
 
 @pytest.mark.parametrize("argname", ("batch_interval", "batch_enabled"))
@@ -181,32 +217,82 @@ def test_executor_shutdown(gc_executor):
     _, gce = gc_executor
     gce.shutdown()
 
-    try_assert(_is_stopped(gce._task_submitter))
-    try_assert(_is_stopped(gce._result_watcher))
+    assert gce._stopped
+    assert _is_stopped(gce._task_submitter)
+    assert _is_stopped(gce._result_watcher)
 
 
 def test_executor_context_manager(gc_executor):
     _, gce = gc_executor
     with gce:
         pass
+
+    assert gce._stopped
     assert _is_stopped(gce._task_submitter)
     assert _is_stopped(gce._result_watcher)
 
 
-def test_executor_stuck_submitter_doesnt_hold_shutdown(gc_executor, mock_log):
+def test_executor_shutdown_idempotent(gc_executor):
     _, gce = gc_executor
-    gce._task_submitter = mock.Mock(spec=threading.Thread)
-    gce._task_submitter.join.side_effect = lambda *a, **kw: None
+    assert not gce._stopped, "Verify test setup"
+    assert gce._task_submitter.is_alive(), "Verify test setup"
+    assert gce._result_watcher is None, "Verify test setup"
+
+    mock_rw = mock.Mock(spec=_ResultWatcher)
+    mock_rw.shutdown.side_effect = (None, AssertionError)
+    gce._result_watcher = mock_rw
+    gce.shutdown()
+
+    assert mock_rw.shutdown.call_count == 1
+    for _ in range(10):
+        gce._result_watcher = mock_rw
+        gce.shutdown()
+    assert mock_rw.shutdown.call_count == 1
+    gce._result_watcher = None
+
+
+def test_executor_shutdown_idempotent_with(gc_executor):
+    _, gce = gc_executor
+    assertion = AssertionError("Expected that context manager exit is noop")
+    mock_rw = mock.Mock(spec=_ResultWatcher)
+    mock_rw.shutdown.side_effect = (None, assertion)
+    gce._result_watcher = mock_rw
+    with gce:
+        gce.shutdown()
+        gce._result_watcher = mock_rw
+    gce._result_watcher = None
+
+
+@pytest.mark.parametrize("num_submits", (random.randint(1, 1000),))
+def test_executor_stuck_submitter_doesnt_hold_shutdown(
+    gc_executor, num_submits, mock_log
+):
+    def some_func(*a, **k):
+        return None
+
+    fn_id = uuid.uuid4()
+
+    gcc, gce = gc_executor
+    gce._tasks_to_send.put((None, None))  # shutdown actual thread before ...
+    try_assert(lambda: not gce._task_submitter.is_alive(), "Verify test setup")
+
+    gcc.register_function.return_value = str(fn_id)
+    gce.endpoint_id = uuid.uuid4()
+    gce._task_submitter = mock.Mock(spec=threading.Thread)  # ... install our mock
+    gce._task_submitter.join.side_effect = some_func
     gce._task_submitter.is_alive.return_value = True
 
-    assert not gce._task_submitter.join.called, "Verify test setup"
+    for _ in range(num_submits):
+        gce.submit(some_func)
+    assert gce._tasks_to_send.qsize() == num_submits
+
     gce.shutdown()
-    assert gce._task_submitter.join.called, "Verify test setup"
+
+    assert not gce._task_submitter.join.called, "poison pill sent; thread NOT joined"
+    assert gce._tasks_to_send.qsize() == 1
+    assert (None, None) == gce._tasks_to_send.get()
 
     gce._task_submitter.is_alive.return_value = False  # allow test cleanup
-
-    warn_log, _ = mock_log.warning.call_args
-    assert "did not stop in a timely fashion" in warn_log[0]
 
 
 def test_multiple_register_function_fails(gc_executor):
@@ -288,6 +374,34 @@ def test_register_function_sends_metadata(gc_executor):
 
 
 @pytest.mark.parametrize(
+    "is_valid, res_spec",
+    (
+        (True, None),
+        (True, {"foo": "bar"}),
+        (False, {"foo": str}),
+        (False, "{'foo': 'bar'}"),
+        (False, "spec"),
+        (False, 1),
+    ),
+)
+def test_resource_specification(gc_executor, is_valid: bool, res_spec):
+    _, gce = gc_executor
+
+    assert gce.resource_specification is None, "Default value is None"
+
+    if is_valid:
+        gce.resource_specification = res_spec
+        assert gce.resource_specification == res_spec
+    else:
+        with pytest.raises(TypeError) as pyt_e:
+            gce.resource_specification = res_spec
+        if isinstance(res_spec, dict):
+            # Ensure we retain original exception
+            assert isinstance(pyt_e.value.__cause__, TypeError)
+        assert gce.resource_specification is None
+
+
+@pytest.mark.parametrize(
     "is_valid,uep_config",
     (
         (True, None),
@@ -313,6 +427,20 @@ def test_user_endpoint_config(gc_executor, is_valid: bool, uep_config):
             # Ensure we retain original exception
             assert isinstance(pyt_e.value.__cause__, TypeError)
         assert gce.user_endpoint_config is None
+
+
+def test_resource_specification_added_to_batch(gc_executor):
+    gcc, gce = gc_executor
+
+    gce.endpoint_id = uuid.uuid4()
+    gce.resource_specification = {"foo": "bar"}
+    gcc.register_function.return_value = uuid.uuid4()
+
+    gce.submit(noop)
+
+    try_assert(lambda: gcc.batch_run.called)
+    args, _ = gcc.create_batch.call_args
+    assert gce.resource_specification in args
 
 
 def test_user_endpoint_config_added_to_batch(gc_executor):
@@ -714,12 +842,7 @@ def test_task_submitter_respects_batch_size(gc_executor, batch_size: int):
     for _ in range(num_batches * batch_size):
         gce.submit(noop)
 
-    # force the batches to be populated by flushing the queues. more consistent than
-    # waiting for the queues to flush themselves automatically due to slowdowns
-    # introduced by `coverage`.
-    gce.shutdown(cancel_futures=True)
-
-    assert gcc.batch_run.call_count >= num_batches
+    try_assert(lambda: gcc.batch_run.call_count >= num_batches)
     for args, _kwargs in gcc.batch_run.call_args_list:
         *_, batch = args
         assert 0 < batch.add.call_count <= batch_size
@@ -746,6 +869,7 @@ def test_task_submitter_stops_executor_on_upstream_error_response(
         task_group_id=uuid.uuid4(),
         endpoint_id=uuid.uuid4(),
         function_id=uuid.uuid4(),
+        resource_specification=None,
         user_endpoint_config=None,
         args=(),
         kwargs={},
@@ -830,7 +954,7 @@ def test_task_submit_handles_multiple_user_endpoint_configs(
     for expected, (a, _k) in zip(
         (uep_config_1, uep_config_2), gcc.create_batch.call_args_list
     ):
-        found_uep_config = a[1]
+        found_uep_config = a[2]
         assert found_uep_config == expected
 
 
@@ -874,7 +998,7 @@ def test_task_submitter_sets_future_task_ids(gc_executor):
         "endpoint_id": "ep_id",
         "tasks": {"fn_id": batch_ids},
     }
-    gce._submit_tasks("tg_id", "ep_id", None, futs, tasks)
+    gce._submit_tasks("tg_id", "ep_id", None, None, futs, tasks)
 
     assert all(f.task_id == task_id for f, task_id in zip(futs, batch_ids))
 
@@ -893,7 +1017,7 @@ def test_submit_tasks_stops_futures_on_bad_response(gc_executor, batch_response)
     ]
 
     with pytest.raises(KeyError) as pyt_exc:
-        gce._submit_tasks("tg_id", "ep_id", None, futs, tasks)
+        gce._submit_tasks("tg_id", "ep_id", None, None, futs, tasks)
 
     for fut in futs:
         assert fut.exception() is pyt_exc.value

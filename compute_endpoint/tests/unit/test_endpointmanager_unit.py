@@ -431,25 +431,28 @@ def test_sends_data_during_registration(
 
     assert mock_gcc.register_endpoint.called
     _a, k = mock_gcc.register_endpoint.call_args
-    for key in (
+    expected_keys = {
         "name",
         "endpoint_id",
-        "display_name",
         "metadata",
         "multi_user",
+        "display_name",
+        "allowed_functions",
+        "auth_policy",
+        "subscription_id",
         "public",
-    ):
-        assert key in k, "Expected minimal top-level fields"
+    }
+    assert expected_keys == k.keys(), "Missing or unexpected keys; update this test?"
 
-    for key in (
+    expected_keys = {
         "endpoint_version",
         "hostname",
         "local_user",
         "config",
         "user_config_template",
         "user_config_schema",
-    ):
-        assert key in k["metadata"], "Expected minimal metadata"
+    }
+    assert expected_keys == k["metadata"].keys(), "Expected minimal metadata"
 
     for key in (
         "type",
@@ -649,7 +652,7 @@ def test_children_signaled_at_shutdown(
     em.wait_for_children = noop
     mock_os = mocker.patch(f"{_MOCK_BASE}os")
     mock_time = mocker.patch(f"{_MOCK_BASE}time")
-    mock_time.time.side_effect = [0, 10, 20, 30]  # don't _actually_ wait.
+    mock_time.monotonic.side_effect = [0, 10, 20, 30]  # don't _actually_ wait.
     mock_os.getuid.side_effect = ["us"]  # fail if called more than once; intentional
     mock_os.getgid.side_effect = ["us"]  # fail if called more than once; intentional
     mock_os.getpgid = lambda pid: pid

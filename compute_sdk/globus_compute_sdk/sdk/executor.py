@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import copy
 import json
 import logging
 import os
@@ -68,6 +69,7 @@ class _TaskSubmissionInfo:
         "task_group_uuid",
         "endpoint_uuid",
         "function_uuid",
+        "resource_specification",
         "user_endpoint_config",
         "args",
         "kwargs",
@@ -80,6 +82,7 @@ class _TaskSubmissionInfo:
         task_group_id: UUID_LIKE_T | None,
         endpoint_id: UUID_LIKE_T,
         function_id: UUID_LIKE_T,
+        resource_specification: dict[str, t.Any] | None,
         user_endpoint_config: dict[str, t.Any] | None,
         args: tuple,
         kwargs: dict,
@@ -88,7 +91,8 @@ class _TaskSubmissionInfo:
         self.task_group_uuid = as_optional_uuid(task_group_id)
         self.function_uuid = as_uuid(function_id)
         self.endpoint_uuid = as_uuid(endpoint_id)
-        self.user_endpoint_config = user_endpoint_config
+        self.resource_specification = copy.deepcopy(resource_specification)
+        self.user_endpoint_config = copy.deepcopy(user_endpoint_config)
         self.args = args
         self.kwargs = kwargs
 
@@ -98,6 +102,7 @@ class _TaskSubmissionInfo:
             f"task_group_uuid='{self.task_group_uuid}'",
             f"endpoint_uuid='{self.endpoint_uuid}'",
             f"function_uuid='{self.function_uuid}'",
+            f"resource_specification={{{len(self.resource_specification or {})}}}",
             f"user_endpoint_config={{{len(self.user_endpoint_config or {})}}}",
             f"args=[{len(self.args)}]",
             f"kwargs=[{len(self.kwargs)}]",
@@ -119,6 +124,7 @@ class Executor(concurrent.futures.Executor):
         container_id: UUID_LIKE_T | None = None,
         client: Client | None = None,
         task_group_id: UUID_LIKE_T | None = None,
+        resource_specification: dict[str, t.Any] | None = None,
         user_endpoint_config: dict[str, t.Any] | None = None,
         label: str = "",
         batch_size: int = 128,
@@ -133,6 +139,8 @@ class Executor(concurrent.futures.Executor):
             the executor will instantiate one with default arguments.
         :param task_group_id: The Task Group to which to associate tasks.  If not set,
             one will be instantiated.
+        :param resource_specification: Specify resource requirements for individual task
+            execution.
         :param user_endpoint_config: User endpoint configuration values as described
             and allowed by endpoint administrators. Must be a JSON-serializable dict
             or None.
@@ -181,6 +189,10 @@ class Executor(concurrent.futures.Executor):
         self._amqp_port: int | None = None
         self.amqp_port = amqp_port
 
+        self._resource_specification: dict | None
+        self.resource_specification = resource_specification
+
+        self._user_endpoint_config: dict | None
         self.user_endpoint_config = user_endpoint_config
 
         self.label = label
@@ -294,6 +306,38 @@ class Executor(concurrent.futures.Executor):
     @task_group_id.setter
     def task_group_id(self, task_group_id: UUID_LIKE_T | None):
         self._task_group_id = as_optional_uuid(task_group_id)
+
+    @property
+    def resource_specification(self) -> dict[str, t.Any] | None:
+        """
+        Specify resource requirements for individual task execution.
+
+        Must be a JSON-serializable dict or None. Set by simple assignment::
+
+            >>> from globus_compute_sdk import Executor
+            >>> res_spec = {"foo": "bar"}
+            >>> gce = Executor(resource_specification=res_spec)
+
+            # May also alter after construction:
+            >>> gce.resource_specification = res_spec
+        """
+        return self._resource_specification
+
+    @resource_specification.setter
+    def resource_specification(self, val: dict | None):
+        if val is not None:
+            if not isinstance(val, dict):
+                raise TypeError(
+                    "Resource specification must be of type dict,"
+                    f"not {type(val).__name__}"
+                )
+            try:
+                json.dumps(val)
+            except Exception as e:
+                raise TypeError(
+                    "Resource specification must be JSON-serializable"
+                ) from e
+        self._resource_specification = val
 
     @property
     def user_endpoint_config(self) -> dict[str, t.Any] | None:
@@ -561,6 +605,7 @@ class Executor(concurrent.futures.Executor):
             task_num=self._task_counter,  # unnecessary; maybe useful for debugging?
             task_group_id=self.task_group_id,
             endpoint_id=self.endpoint_id,
+            resource_specification=self.resource_specification,
             user_endpoint_config=self.user_endpoint_config,
             function_id=function_id,
             args=args,
@@ -705,26 +750,31 @@ class Executor(concurrent.futures.Executor):
         return futures
 
     def shutdown(self, wait=True, *, cancel_futures=False):
+        if self._stopped:
+            # we've already shutdown (e.g., manually); if we're being called again
+            # then it's likely as a context manager is shutting down; the work has
+            # already been done, so bow out early
+            return
+
         thread_id = threading.get_ident()
         log.debug("%r: initiating shutdown (thread: %s)", self, thread_id)
-        if self._task_submitter.is_alive():
-            log.debug(
-                "%r: %s still alive; sending poison pill",
-                self,
-                self._task_submitter.name,
-            )
-            self._tasks_to_send.put((None, None))
-            if wait and self._task_submitter.ident != thread_id:
-                self._task_submitter.join(2)
-                if self._task_submitter.is_alive():
-                    log.warning(
-                        "Task submission thread did not stop in a timely fashion; an"
-                        " HTTP request may yet be outstanding.  Attempting to shutdown"
-                        " Executor anyway"
-                    )
-
         with self._shutdown_lock:
             self._stopped = True
+            if self._task_submitter.is_alive():
+                log.debug(
+                    "%r: %s still alive; sending poison pill",
+                    self,
+                    self._task_submitter.name,
+                )
+                try:
+                    # first, drain the queue
+                    while True:
+                        self._tasks_to_send.get(block=False)
+                        self._tasks_to_send.task_done()
+                except queue.Empty:
+                    pass
+                self._tasks_to_send.put((None, None))  # poison pill for submitter
+
             if self._result_watcher:
                 self._result_watcher.shutdown(wait=wait, cancel_futures=cancel_futures)
                 self._result_watcher = None
@@ -773,12 +823,14 @@ class Executor(concurrent.futures.Executor):
         class SubmitGroup(t.NamedTuple):
             task_group_uuid: uuid.UUID | None
             endpoint_uuid: uuid.UUID
+            resource_specification: dict | None
             user_endpoint_config: dict | None
 
             def __hash__(self):
                 key = (
                     self.task_group_uuid,
                     self.endpoint_uuid,
+                    json.dumps(self.resource_specification, sort_keys=True),
                     json.dumps(self.user_endpoint_config, sort_keys=True),
                 )
                 return hash(key)
@@ -808,6 +860,7 @@ class Executor(concurrent.futures.Executor):
                         submit_group = SubmitGroup(
                             task.task_group_uuid,
                             task.endpoint_uuid,
+                            task.resource_specification,
                             task.user_endpoint_config,
                         )
                         tasks[submit_group].append(task)
@@ -825,14 +878,14 @@ class Executor(concurrent.futures.Executor):
                 for submit_group, task_list in tasks.items():
                     fut_list = futs[submit_group]
 
-                    tg_uuid, ep_uuid, uep_config = submit_group
+                    tg_uuid, ep_uuid, res_spec, uep_config = submit_group
                     log.info(
                         f"Submitting tasks for Task Group {tg_uuid} to"
                         f" Endpoint {ep_uuid}: {len(task_list):,}"
                     )
 
                     self._submit_tasks(
-                        tg_uuid, ep_uuid, uep_config, fut_list, task_list
+                        tg_uuid, ep_uuid, res_spec, uep_config, fut_list, task_list
                     )
 
                     to_watch = [f for f in fut_list if f.task_id and not f.done()]
@@ -915,6 +968,7 @@ class Executor(concurrent.futures.Executor):
         self,
         taskgroup_uuid: uuid.UUID | None,
         endpoint_uuid: uuid.UUID,
+        resource_specification: dict | None,
         user_endpoint_config: dict | None,
         futs: list[ComputeFuture],
         tasks: list[_TaskSubmissionInfo],
@@ -925,6 +979,8 @@ class Executor(concurrent.futures.Executor):
 
         :param endpoint_uuid: UUID of the Endpoint on which to execute this batch.
         :param taskgroup_uuid: UUID of the task group
+        :param resource_specification: Specify resource requirements for individual task
+            execution.
         :param user_endpoint_config: User endpoint configuration values as described and
             allowed by endpoint administrators
         :param futs: a list of ComputeFutures; will have their task_id attribute
@@ -936,7 +992,10 @@ class Executor(concurrent.futures.Executor):
             taskgroup_uuid = self.task_group_id
 
         batch = self.client.create_batch(
-            taskgroup_uuid, user_endpoint_config, create_websocket_queue=True
+            taskgroup_uuid,
+            resource_specification,
+            user_endpoint_config,
+            create_websocket_queue=True,
         )
         submitted_futs_by_fn: t.DefaultDict[str, list[ComputeFuture]] = defaultdict(
             list
