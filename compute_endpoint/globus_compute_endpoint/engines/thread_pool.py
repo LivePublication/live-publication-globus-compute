@@ -20,7 +20,6 @@ from globus_compute_endpoint.engines.base import (
 
 logger = logging.getLogger(__name__)
 
-
 class ThreadPoolEngine(GlobusComputeEngineBase):
     def __init__(self, *args, label: str = "ThreadPoolEngine", **kwargs):
         self.label = label

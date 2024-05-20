@@ -20,86 +20,13 @@ from parsl.app.python import timeout
 
 # Distributed Step Crate imports
 from lp_sdk.retrospective.crate import DistStepCrate
-import platform
-import sys
-import shlex
-import shutil
-import subprocess
+from .simple_hardware import parse_hardware_report, CPUMonitor
+from rocrate.model import ContextEntity, DataEntity
+import json
 
 log = logging.getLogger(__name__)
 
 serializer = ComputeSerializer()
-
-def _run_command(cmd: str) -> str | None:
-    logger = logging.getLogger(__name__)  # get logger at call site (ie, endpoint)
-
-    cmd_list = shlex.split(cmd)
-    arg0 = cmd_list[0]
-
-    if not shutil.which(arg0):
-        logger.info(f"{arg0} was not found in the PATH")
-        return None
-
-    try:
-        res = subprocess.run(cmd_list, timeout=30, capture_output=True, text=True)
-        if res.stdout:
-            return str(res.stdout)
-        if res.stderr:
-            return str(res.stderr)
-        return "Warning: command had no output on stdout or stderr"
-    except subprocess.TimeoutExpired:
-        logger.exception(f"Command `{cmd}` timed out")
-        return (
-            "Error: command timed out (took more than 30 seconds). "
-            "See endpoint logs for more details."
-        )
-    except Exception as e:
-        logger.exception(f"Command `{cmd}` failed")
-        return (
-            f"An error of type {type(e).__name__} occurred. "
-            "See endpoint logs for more details."
-        )
-
-def mem_info() -> str:
-    import psutil  # import here bc psutil is installed with endpoint but not sdk
-
-    svmem = psutil.virtual_memory()
-    return "\n".join(f"{k}: {v}" for k, v in svmem._asdict().items())
-
-def python_version() -> str:
-    return str(sys.version)
-
-def run_hardware_report() -> str:
-    commands = [
-        platform.processor,
-        os.cpu_count,
-        "lscpu",
-        "lshw -C display",
-        "nvidia-smi",
-        mem_info,
-        "df",
-        platform.node,
-        platform.platform,
-        python_version,
-        "globus-compute-endpoint version",
-    ]
-
-    outputs = []
-    for cmd in commands:
-        if callable(cmd):
-            display_name = getattr(
-                cmd, "display_name", f"{cmd.__module__}.{cmd.__name__}()"
-            )
-            display_name = f"python: {display_name}"
-            output = cmd()
-        else:
-            display_name = f"shell: {cmd}"
-            output = _run_command(cmd)
-
-        if output:
-            outputs.append(f"== {display_name} ==\n{output}")
-
-    return "\n\n".join(outputs)
 
 def execute_task(
     task_id: uuid.UUID,
@@ -129,9 +56,13 @@ def execute_task(
         uuid.UUID | str | tuple[str, str] | list[TaskTransition] | dict[str, str],
     ]
 
-    log.warning(run_hardware_report())
-
     env_details = get_env_details()
+
+    # Start example CPU monitoring 
+    cpu_observation_pollrate = 0.05
+    cpu_monitor = CPUMonitor(interval=cpu_observation_pollrate)
+    cpu_monitor.start()
+
     try:
         _task, task_buffer = _unpack_messagebody(task_body)
         log.warning("executing task task_id='%s'", task_id)
@@ -160,7 +91,6 @@ def execute_task(
     )
 
     result_message["task_statuses"] = [exec_start, exec_end]
-    result_message["TEST"] = "Hello World!"
 
     log.warning(
         "task %s completed in %d ns",
@@ -168,14 +98,109 @@ def execute_task(
         (exec_end.timestamp - exec_start.timestamp),
     )
 
+    # Stop cpu_monitor and return json 
+    cpu_monitor.stop()
+    cpu_usage_data = cpu_monitor.get_data()
+    cpu_usage_fig = cpu_monitor.plot_cpu_usage()
+
     crate_path = f'{result_message.get("task_id")}.crate'
-    log.warning(f"crate_path: {crate_path}")
     dist_crate = DistStepCrate(crate_path)
     dist_crate.add_position(result_message.get("task_id"))
+    
+    # Temp crate manipulation (will be refactored and moved to lp_sdk)
+    hardware = parse_hardware_report()
+    temp_crate = dist_crate.crate
+    main_entity = temp_crate.mainEntity
+
+    lscpu_shell = hardware["lscpu"]["shell"]
+    cpu_component = temp_crate.add(ContextEntity(
+        crate=temp_crate,
+        properties={
+            '@type': 'HardwareComponent',
+            'name': 'CPU',
+            'description': 'CPU properties as reported by lscpu',
+            **{key: value for key, value in lscpu_shell.items()}
+        }
+    ))
+
+    cpu_observation_fig = temp_crate.add_file(
+        cpu_usage_fig,
+        dest_path='images/cpu_usage.png',
+        properties={
+            "name": "CPU usage",
+            "encodingFormat": "image/png"
+        })
+
+    cpu_observation_data = temp_crate.add_file(
+        cpu_usage_data,
+        dest_path='data/cpu_usage.json',
+        properties={
+            "name": "CPU usage",
+            "encodingFormat": "json"
+        }
+    )
+
+    cpu_observation = temp_crate.add(ContextEntity(
+        crate=temp_crate,
+        properties={
+            '@type': 'Observation',
+            'observationAbout': cpu_component.id,
+            'measurementTechnique': f"Psutil.cpu_percent polled at {cpu_observation_pollrate}",
+            'image': cpu_observation_fig.id,
+            'maxValue': cpu_monitor.get_max_cpu_usage(),
+            'minValue': cpu_monitor.get_min_cpu_usage(),
+            'value': cpu_observation_data.id
+        }
+    ))
+
+    cpu_component.append_to("performance", cpu_observation.id)
+
+    ram_details = hardware["globus_compute_endpoint.engines.simple_hardware.mem_info()"]["python"]
+    ram_component = temp_crate.add(ContextEntity(
+        crate=temp_crate,
+        properties={
+            '@type': 'HardwareComponent',
+            'name': 'RAM',
+            'description': 'RAM properties as reported by mem_info()',
+            **{key: value for key, value in ram_details.items()}
+        }
+    ))
+
+    gen_storage = hardware["df"]["shell"]
+    storage_details = next((item for item in gen_storage if item["Mounted"] == "/mnt/storage"), None)
+    storage_component = temp_crate.add(ContextEntity(
+        crate=temp_crate,
+        properties={
+            '@type': 'HardwareComponent',
+            'name': 'Storage',
+            'description': 'Storage properties as reported by ds',
+            **{key: value for key, value in storage_details.items()}
+        }
+    ))
+
+    hardware_runtime = temp_crate.add(ContextEntity(
+        crate=temp_crate,
+        properties={
+            '@type': 'HardwareRuntime',
+            'components': {
+                lscpu_shell["Model name"]: cpu_component.id,
+                'RAM': ram_component.id,
+                'DRIVE': storage_component.id
+            }
+        }
+    ))
+
+    main_entity['hasPart'] = hardware_runtime
     dist_crate.write()
 
-    log.warning(f"result_message: {result_message}")
+    # Clean up env 
+    if os.path.exists(cpu_usage_data):
+        os.remove(cpu_usage_data)
+    if os.path.exists(cpu_usage_fig):
+        os.remove(cpu_usage_fig)
 
+    log.warning("CPU data and fig deleted.")
+    log.warning(f"result_message: {result_message}")
 
     return messagepack.pack(Result(**result_message))
 
