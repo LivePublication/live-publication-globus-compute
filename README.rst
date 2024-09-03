@@ -56,5 +56,5 @@ Documentation
 
 Complete documentation for Globus Compute is available `here <https://globus-compute.readthedocs.io>`_
 
-Distriubted Step Crate Generation
+Distributed Step Crate Generation
 =================================
