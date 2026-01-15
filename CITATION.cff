@@ -2,7 +2,7 @@ cff-version: 1.2.0
 title: live-publication-globus-compute (Thesis Artifact)
 message: If you use this software, please cite it as below.
 type: software
-version: 1.0.1
+version: 1.0.2
 abstract: A LivePublication fork of Globus Compute that emits Distributed Step Crate (DSC) RO-Crate provenance records for each task executed on an endpoint, enabling step-level provenance packaging in a distributed execution environment.
 doi: 10.5281/zenodo.18254882
 license: Apache-2.0

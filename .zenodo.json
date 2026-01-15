@@ -1,8 +1,8 @@
 {
-  "title": "live-publication-globus-compute",
+  "title": "LivePublication Globus Compute",
   "description": "A LivePublication fork of Globus Compute that emits Distributed Step Crate (DSC) RO-Crate provenance records for each task executed on an endpoint, enabling step-level provenance packaging in a distributed execution environment.",
   "upload_type": "software",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "creators": [
     {
       "name": "Ellerm, Augustus",
@@ -20,11 +20,6 @@
     "DSC"
   ],
   "related_identifiers": [
-    {
-      "identifier": "https://doi.org/10.5281/zenodo.18254882",
-      "relation": "isIdenticalTo",
-      "resource_type": "software"
-    },
     {
       "identifier": "https://github.com/LivePublication/live-publication-globus-compute",
       "relation": "isSupplementTo",
