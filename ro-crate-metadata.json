@@ -92,12 +92,13 @@
                     "@id": "scripts/"
                 }
             ],
+            "identifier": "https://doi.org/10.5281/zenodo.18254882",
             "license": "Apache-2.0",
             "mainEntity": {
                 "@id": "#software"
             },
             "name": "live-publication-globus-compute (Thesis Artifact)",
-            "version": "1.0.0"
+            "version": "1.0.1"
         },
         {
             "@id": "ro-crate-metadata.json",
@@ -121,10 +122,11 @@
             ],
             "codeRepository": "https://github.com/LivePublication/live-publication-globus-compute",
             "description": "A LivePublication fork of Globus Compute that emits Distributed Step Crate (DSC) RO-Crate provenance records for each task executed on an endpoint, enabling step-level provenance packaging in a distributed execution environment.",
+            "identifier": "https://doi.org/10.5281/zenodo.18254882",
             "license": "Apache-2.0",
             "name": "live-publication-globus-compute (Thesis Artifact)",
             "programmingLanguage": "Python",
-            "version": "1.0.0"
+            "version": "1.0.1"
         },
         {
             "@id": "README.md",

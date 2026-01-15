@@ -1,11 +1,11 @@
 {
   "@context": "https://doi.org/10.5063/schema/codemeta-2.0",
   "@type": "SoftwareSourceCode",
-  "name": "live-publication-globus-compute (Thesis Artifact)",
+  "name": "live-publication-globus-compute",
   "description": "A LivePublication fork of Globus Compute that emits Distributed Step Crate (DSC) RO-Crate provenance records for each task executed on an endpoint, enabling step-level provenance packaging in a distributed execution environment.",
   "codeRepository": "https://github.com/LivePublication/live-publication-globus-compute",
   "license": "Apache-2.0",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": [
     {
       "@type": "Person",

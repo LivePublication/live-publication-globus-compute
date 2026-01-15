@@ -39,7 +39,8 @@ def main() -> None:
     crate.root_dataset["description"] = description
     crate.root_dataset["license"] = "Apache-2.0"
     crate.root_dataset["datePublished"] = date.today().isoformat()
-    crate.root_dataset["version"] = "1.0.0"
+    crate.root_dataset["version"] = "1.0.1"
+    crate.root_dataset["identifier"] = "https://doi.org/10.5281/zenodo.18254882"
 
     software = crate.add_jsonld(
         {
@@ -47,8 +48,9 @@ def main() -> None:
             "@type": "SoftwareSourceCode",
             "name": title,
             "description": description,
-            "version": "1.0.0",
+            "version": "1.0.1",
             "license": "Apache-2.0",
+            "identifier": "https://doi.org/10.5281/zenodo.18254882",
             "codeRepository": "https://github.com/LivePublication/live-publication-globus-compute",
             "programmingLanguage": "Python",
             "author": [

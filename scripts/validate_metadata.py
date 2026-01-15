@@ -32,7 +32,7 @@ def validate_zenodo(path: Path) -> None:
     creators = data.get("creators", [])
     require(data.get("title"), "Zenodo: missing title")
     require(data.get("description"), "Zenodo: missing description")
-    require(data.get("version") == "1.0.0", "Zenodo: version must be 1.0.0")
+    require(data.get("version") == "1.0.1", "Zenodo: version must be 1.0.1")
     require(data.get("license") == "apache-2.0", "Zenodo: license must be apache-2.0")
     require(creators, "Zenodo: creators missing")
     orcid = creators[0].get("orcid", "")
@@ -41,12 +41,12 @@ def validate_zenodo(path: Path) -> None:
 
 def validate_codemeta(path: Path) -> None:
     data = load_json(path)
-    require(data.get("version") == "1.0.0", "CodeMeta: version must be 1.0.0")
+    require(data.get("version") == "1.0.1", "CodeMeta: version must be 1.0.1")
 
 
 def validate_citation(path: Path) -> None:
     data = load_yaml(path)
-    require(data.get("version") == "1.0.0", "CITATION.cff: version must be 1.0.0")
+    require(data.get("version") == "1.0.1", "CITATION.cff: version must be 1.0.1")
 
 
 def validate_rocrate(path: Path, repo_root: Path) -> None:
@@ -95,9 +95,9 @@ def main() -> None:
     print("- Confirm quickstart steps work on a real Globus endpoint")
     print("- Confirm the Apache-2.0 license matches your intent")
     print("- Confirm Zenodo GitHub integration is enabled for this repository")
-    print("- Create a GitHub release/tag v1.0.0")
+    print("- Create a GitHub release/tag v1.0.1")
     print("- Verify the Zenodo DOI is minted after release")
-    print("- Patch a 1.0.1 release to add the DOI back into metadata files")
+    print("- Patch a 1.0.2 release to add the DOI back into metadata files")
 
 
 if __name__ == "__main__":

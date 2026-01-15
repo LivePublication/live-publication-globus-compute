@@ -51,7 +51,7 @@ Use the upstream Globus Compute quickstart for installing and running endpoints 
 ## How to cite
 
 - GitHub: https://github.com/LivePublication/live-publication-globus-compute
-- Zenodo DOI: (minted after release)
+- Zenodo DOI: https://doi.org/10.5281/zenodo.18254882
 
 ## License
 
