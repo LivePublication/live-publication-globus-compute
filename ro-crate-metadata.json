@@ -1,0 +1,186 @@
+{
+    "@context": "https://w3id.org/ro/crate/1.1/context",
+    "@graph": [
+        {
+            "@id": "./",
+            "@type": "Dataset",
+            "datePublished": "2026-01-15",
+            "description": "A LivePublication fork of Globus Compute that emits Distributed Step Crate (DSC) RO-Crate provenance records for each task executed on an endpoint, enabling step-level provenance packaging in a distributed execution environment.",
+            "hasPart": [
+                {
+                    "@id": "README.md"
+                },
+                {
+                    "@id": "README.md"
+                },
+                {
+                    "@id": "README.rst"
+                },
+                {
+                    "@id": "README.rst"
+                },
+                {
+                    "@id": "LICENSE"
+                },
+                {
+                    "@id": "LICENSE"
+                },
+                {
+                    "@id": ".zenodo.json"
+                },
+                {
+                    "@id": ".zenodo.json"
+                },
+                {
+                    "@id": "codemeta.json"
+                },
+                {
+                    "@id": "codemeta.json"
+                },
+                {
+                    "@id": "CITATION.cff"
+                },
+                {
+                    "@id": "CITATION.cff"
+                },
+                {
+                    "@id": "CONTRIBUTING.md"
+                },
+                {
+                    "@id": "CONTRIBUTING.md"
+                },
+                {
+                    "@id": "RELEASING.md"
+                },
+                {
+                    "@id": "RELEASING.md"
+                },
+                {
+                    "@id": "compute_endpoint/"
+                },
+                {
+                    "@id": "compute_endpoint/"
+                },
+                {
+                    "@id": "compute_sdk/"
+                },
+                {
+                    "@id": "compute_sdk/"
+                },
+                {
+                    "@id": "docs/"
+                },
+                {
+                    "@id": "docs/"
+                },
+                {
+                    "@id": "local_dev/"
+                },
+                {
+                    "@id": "local_dev/"
+                },
+                {
+                    "@id": "smoke_tests/"
+                },
+                {
+                    "@id": "smoke_tests/"
+                },
+                {
+                    "@id": "scripts/"
+                },
+                {
+                    "@id": "scripts/"
+                }
+            ],
+            "license": "Apache-2.0",
+            "mainEntity": {
+                "@id": "#software"
+            },
+            "name": "live-publication-globus-compute (Thesis Artifact)",
+            "version": "1.0.0"
+        },
+        {
+            "@id": "ro-crate-metadata.json",
+            "@type": "CreativeWork",
+            "about": {
+                "@id": "./"
+            },
+            "conformsTo": {
+                "@id": "https://w3id.org/ro/crate/1.1"
+            }
+        },
+        {
+            "@id": "#software",
+            "@type": "SoftwareSourceCode",
+            "author": [
+                {
+                    "@id": "https://orcid.org/0000-0001-8260-231X",
+                    "@type": "Person",
+                    "name": "Augustus Ellerm"
+                }
+            ],
+            "codeRepository": "https://github.com/LivePublication/live-publication-globus-compute",
+            "description": "A LivePublication fork of Globus Compute that emits Distributed Step Crate (DSC) RO-Crate provenance records for each task executed on an endpoint, enabling step-level provenance packaging in a distributed execution environment.",
+            "license": "Apache-2.0",
+            "name": "live-publication-globus-compute (Thesis Artifact)",
+            "programmingLanguage": "Python",
+            "version": "1.0.0"
+        },
+        {
+            "@id": "README.md",
+            "@type": "File"
+        },
+        {
+            "@id": "README.rst",
+            "@type": "File"
+        },
+        {
+            "@id": "LICENSE",
+            "@type": "File"
+        },
+        {
+            "@id": ".zenodo.json",
+            "@type": "File"
+        },
+        {
+            "@id": "codemeta.json",
+            "@type": "File"
+        },
+        {
+            "@id": "CITATION.cff",
+            "@type": "File"
+        },
+        {
+            "@id": "CONTRIBUTING.md",
+            "@type": "File"
+        },
+        {
+            "@id": "RELEASING.md",
+            "@type": "File"
+        },
+        {
+            "@id": "compute_endpoint/",
+            "@type": "Dataset"
+        },
+        {
+            "@id": "compute_sdk/",
+            "@type": "Dataset"
+        },
+        {
+            "@id": "docs/",
+            "@type": "Dataset"
+        },
+        {
+            "@id": "local_dev/",
+            "@type": "Dataset"
+        },
+        {
+            "@id": "smoke_tests/",
+            "@type": "Dataset"
+        },
+        {
+            "@id": "scripts/",
+            "@type": "Dataset"
+        }
+    ]
+}

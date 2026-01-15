@@ -1,78 +1,67 @@
-# Globus Compute (LivePublication fork) — Distributed Step Crate Provenance
+# live-publication-globus-compute (Thesis Artifact)
 
-This branch is a fork of Globus Compute tailored for research on step-level provenance. It adds instrumentation in the worker execution path to emit per-task Distributed Step Crates. These crates can later be assembled into a run-level provenance workflow record.
+## What this repository does
 
-## Distributed Step Crate Provenance Extension
+This repository is a LivePublication fork of Globus Compute that instruments the worker execution path to emit a per-task Distributed Step Crate (DSC). Each DSC is an RO-Crate produced after task completion and persisted locally on the worker for later aggregation into a run-level provenance record.
 
-In this fork, a Distributed Step Crate is a per-task RO-Crate capturing what happened during a single function execution on a worker. The crate is created by the worker process after the task completes and written to disk alongside normal execution artifacts.
+## How it fits into the thesis
 
-What’s captured today:
+This artifact supports Chapter 5 (Provenance for Distributed Workflow Management Systems) by providing a concrete Globus Compute integration that packages step-level provenance as Distributed Step Crates. The implementation operationalizes the thesis provenance model in a distributed execution setting by capturing per-task hardware/runtime observations and emitting DSC-compatible RO-Crate structures.
 
-- Task identity: the crate is positioned/named with the Globus Compute `task_id`.
-- Hardware snapshot (at execution time):
+Related works:
+- LivePublication interface schemas (Zenodo DOI): https://doi.org/10.5281/zenodo.18250033
+- Interactive Distributed Provenance Example (viewer + data) (Zenodo DOI): https://doi.org/10.5281/zenodo.18253488
 
-  - CPU properties from `lscpu` (model name and related fields).
-  - RAM details from `psutil.virtual_memory()`.
-  - Storage details parsed from `df` (prototype targets a specific mount).
-- Runtime observations during the task:
+## Repository structure
 
-  - CPU usage time series sampled via `psutil.cpu_percent()` at a fixed poll rate.
-  - A PNG plot of CPU usage over the task’s lifetime.
-  - Summary statistics (min/max CPU percent) for the observation window.
-- Results are assumed to be written to disk within the uses home directory (i.e. where Globus Compute executes tasks).
+- `compute_endpoint/`: Globus Compute endpoint code with DSC emission in the worker execution path.
+- `compute_sdk/`: Globus Compute SDK (client-side) code.
+- `docs/`: Upstream Globus Compute documentation, including quickstart and endpoint setup.
+- `smoke_tests/`: Smoke tests for basic endpoint behavior.
+- `local_dev/`: Local development docker-compose scaffolding.
 
-Notes:
+## Inputs
 
-- The crate is not attached to the task’s result payload; it’s persisted locally for later aggregation/collection.
-- The crate structure uses RO-Crate entities (e.g., `HardwareComponent`, `Observation`, `HardwareRuntime`) via the `rocrate` library. The crate is created through `lp_sdk.retrospective.crate.DistStepCrate` and then populated with additional entities/files.
+- Globus Compute task execution context (task ID, working directory).
+- Hardware and runtime observations gathered on the worker:
+  - CPU details from `lscpu`
+  - RAM details from `psutil.virtual_memory()`
+  - Storage details from `df` (prototype targets a specific mount)
+  - CPU usage time series from `psutil.cpu_percent()` sampling
+- Environment assumptions:
+  - Tasks run on a Linux endpoint with access to the above tools and libraries.
 
-## Modified Components in This Branch
+## Outputs
 
-This fork introduces the following provenance-specific changes relative to upstream:
+- A Distributed Step Crate written locally as `<task_id>.crate` on the worker.
+- Inside the crate:
+  - `data/cpu_usage.json` (CPU usage time series)
+  - `images/cpu_usage.png` (plot of the same observation)
+  - RO-Crate metadata entities describing CPU, RAM, Storage, and a `HardwareRuntime` observation
+- The task’s result payload is unchanged; provenance is not returned via the client by default.
 
-- `compute_endpoint/globus_compute_endpoint/engines/helper.py`
+## Quickstart
 
-  - Function: `execute_task(...)`
-  - Adds step-crate generation after user function execution:
-    - Starts a CPU monitor before invocation and stops it after completion.
-    - Constructs a `DistStepCrate` named `<task_id>.crate`, and calls `add_position(task_id)` to bind task identity.
-    - Extracts a hardware snapshot (CPU via `lscpu`, RAM via `psutil`, storage via `df`).
-    - Adds RO-Crate entities: `HardwareComponent` (CPU, RAM, Storage), an `Observation` over CPU usage (with JSON timeseries and PNG plot), and a `HardwareRuntime` entity linking the components.
-    - Writes the crate to disk via `dist_crate.write()` and cleans up intermediate JSON/PNG files.
-- `compute_endpoint/globus_compute_endpoint/engines/simple_hardware.py` (new)
+Use the upstream Globus Compute quickstart for installing and running endpoints and the SDK: `docs/quickstart.rst`.
 
-  - Module providing hardware collection and observation utilities used by the worker:
-    - `run_hardware_report()` and `parse_hardware_report()` run and parse `lscpu`, `df`, `nvidia-smi`, and Python environment details.
-    - `CPUMonitor` class samples `psutil.cpu_percent()` at a configurable interval, writes JSON with timestamps/values, and can output a Matplotlib PNG plot.
-    - Helpers for parsing `df` and structuring outputs into dicts suitable for RO-Crate properties.
-- `compute_endpoint/setup.py`
+TODO:
+- Document the exact endpoint configuration used for DSC emission in this fork.
+- Document how to collect `<task_id>.crate` outputs from worker hosts for aggregation.
+- Document any environment-specific storage mount requirements for `df` parsing.
 
-  - Packaging changes to enable crate emission:
-    - Adds `rocrate` as a dependency.
-    - Adds LivePublication’s `lp-sdk` (via VCS URL) to obtain `DistStepCrate`.
+## Reproducibility notes
 
-## Configuration
+- DSC emission is always-on in the modified worker path (no feature flag in this branch).
+- CPU polling interval is hardcoded to `0.05` seconds in the worker execution path.
+- The crate is created via `lp_sdk.retrospective.crate.DistStepCrate` and the `rocrate` library.
+- Crate files accumulate in the worker’s current working directory and must be collected separately.
+- The endpoint component targets Linux; the SDK can run on macOS, Linux, and Windows (per upstream docs).
 
-Current prototype behavior is always-on in the modified worker path; there is no feature flag in this branch to toggle crate emission.
+## How to cite
 
-Relevant parameters and assumptions:
+- GitHub: https://github.com/LivePublication/live-publication-globus-compute
+- Zenodo DOI: (minted after release)
 
-- CPU polling interval: hardcoded to `0.05` seconds in `execute_task()` when starting `CPUMonitor`.
-- Crate path: `crate_path = f"{task_id}.crate"` in the worker’s current working directory.
-- Storage parsing: the prototype looks for a specific `df` row (e.g., `Mounted == "/mnt/storage"`). This may require adaptation to your environment.
+## License
 
-## Usage / Runtime Notes
-
-Submit and execute tasks as you normally would with Globus Compute. When a task completes on the worker:
-
-- A Distributed Step Crate is written locally as `<task_id>.crate`.
-- Inside the crate you will find:
-  - `data/cpu_usage.json`: time series of CPU percent over the task lifetime.
-  - `images/cpu_usage.png`: a plot of the same observation.
-  - RO-Crate metadata describing CPU, RAM, and Storage components and an `Observation` about CPU usage, linked under a `HardwareRuntime` entity.
-- The task’s result payload is not modified; no crate data is returned to the client by default.
-
-Operational considerations:
-
-- Crate files accumulate where the worker runs. You may want to collect them (e.g., via file transfer) after or during executions for downstream aggregation. This can be done using the [provenance-aware Gladier extension](https://github.com/LivePublication/live-publication-gladier) which manages provenance fragements in the system at runtime.
-- The CPU monitor runs concurrently during the task; sampling overhead is expected to be small but non-zero.
+Apache-2.0
