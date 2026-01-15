@@ -1,12 +1,8 @@
-# live-publication-globus-compute (Thesis Artifact)
+# live-publication-globus-compute
 
 ## What this repository does
 
-This repository is a LivePublication fork of Globus Compute that instruments the worker execution path to emit a per-task Distributed Step Crate (DSC). Each DSC is an RO-Crate produced after task completion and persisted locally on the worker for later aggregation into a run-level provenance record.
-
-## How it fits into the thesis
-
-This artifact supports Chapter 5 (Provenance for Distributed Workflow Management Systems) by providing a concrete Globus Compute integration that packages step-level provenance as Distributed Step Crates. The implementation operationalizes the thesis provenance model in a distributed execution setting by capturing per-task hardware/runtime observations and emitting DSC-compatible RO-Crate structures.
+This repository is a LivePublication fork of Globus Compute that extends the worker execution logic to emit a per-task Distributed Step Crate (DSC). Each DSC is an RO-Crate produced after task completion and persisted locally on the worker for later aggregation into a run-level provenance record.
 
 Related works:
 - LivePublication interface schemas (Zenodo DOI): https://doi.org/10.5281/zenodo.18250033
@@ -43,11 +39,6 @@ Related works:
 ## Quickstart
 
 Use the upstream Globus Compute quickstart for installing and running endpoints and the SDK: `docs/quickstart.rst`.
-
-TODO:
-- Document the exact endpoint configuration used for DSC emission in this fork.
-- Document how to collect `<task_id>.crate` outputs from worker hosts for aggregation.
-- Document any environment-specific storage mount requirements for `df` parsing.
 
 ## Reproducibility notes
 
